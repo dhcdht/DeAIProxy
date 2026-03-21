@@ -1,9 +1,13 @@
 package registry
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
+	"github.com/deapn/router/internal/eth"
 	"github.com/gorilla/websocket"
 )
 
@@ -18,22 +22,35 @@ type Registry struct {
 	nodes map[string]*Node
 	mu    sync.RWMutex
 	log   *slog.Logger
+	eth   *eth.Client
 }
 
-func New(logger *slog.Logger) *Registry {
+func New(logger *slog.Logger, ethClient *eth.Client) *Registry {
 	return &Registry{
 		nodes: make(map[string]*Node),
 		log:   logger,
+		eth:   ethClient,
 	}
 }
 
-func (r *Registry) Register(id string, wallet string, conn *websocket.Conn) {
+func (r *Registry) Register(id string, wallet string, conn *websocket.Conn) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// TODO: Call Smart Contract to check if wallet has enough $PROXY staked
-	// For now, log the wallet address for trust tracking
-	r.log.Info("Checking node eligibility", "wallet", wallet)
+	if r.eth != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		eligible, err := r.eth.IsNodeEligible(ctx, wallet)
+		if err != nil {
+			r.log.Error("Failed to check node eligibility on-chain", "wallet", wallet, "error", err)
+			return fmt.Errorf("staking verification failed: %w", err)
+		}
+		if !eligible {
+			r.log.Warn("Node registration rejected: Insufficient Stake", "wallet", wallet)
+			return fmt.Errorf("insufficient stake on-chain")
+		}
+	}
 
 	if old, ok := r.nodes[id]; ok {
 		old.Conn.Close()
@@ -45,6 +62,7 @@ func (r *Registry) Register(id string, wallet string, conn *websocket.Conn) {
 		Conn:          conn,
 	}
 	r.log.Info("Node registered", "id", id, "wallet", wallet)
+	return nil
 }
 
 func (r *Registry) Unregister(id string) {

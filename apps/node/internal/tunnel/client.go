@@ -11,17 +11,19 @@ import (
 )
 
 type Client struct {
-	nodeID    string
-	routerURL string
-	log       *slog.Logger
-	conn      *websocket.Conn
+	nodeID        string
+	walletAddress string
+	routerURL     string
+	log           *slog.Logger
+	conn          *websocket.Conn
 }
 
-func NewClient(nodeID, routerURL string, logger *slog.Logger) *Client {
+func NewClient(nodeID, wallet, routerURL string, logger *slog.Logger) *Client {
 	return &Client{
-		nodeID:    nodeID,
-		routerURL: routerURL,
-		log:       logger,
+		nodeID:        nodeID,
+		walletAddress: wallet,
+		routerURL:     routerURL,
+		log:           logger,
 	}
 }
 
@@ -49,7 +51,7 @@ func (c *Client) Start() {
 			continue
 		}
 
-		c.log.Info("Connected and registered")
+		c.log.Info("Connected and registered", "node_id", c.nodeID, "wallet", c.walletAddress)
 		c.listen()
 		c.log.Warn("Disconnected, retrying...")
 		time.Sleep(5 * time.Second)
@@ -57,7 +59,10 @@ func (c *Client) Start() {
 }
 
 func (c *Client) register() error {
-	payload, _ := json.Marshal(protocol.RegisterPayload{NodeID: c.nodeID})
+	payload, _ := json.Marshal(protocol.RegisterPayload{
+		NodeID:        c.nodeID,
+		WalletAddress: c.walletAddress,
+	})
 	msg := protocol.Message{
 		Type:    protocol.MessageTypeRegister,
 		NodeID:  c.nodeID,

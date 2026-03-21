@@ -5,4 +5,5 @@ use (
 	./apps/router
 	./packages/logger
 	./packages/protocol
+	./sdk/go
 )
