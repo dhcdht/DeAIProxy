@@ -1,0 +1,8 @@
+go 1.26.1
+
+use (
+	./apps/node
+	./apps/router
+	./packages/logger
+	./packages/protocol
+)

@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: deapn
+      POSTGRES_PASSWORD: deapn_password
+      POSTGRES_DB: deapn
+    ports:
+      - "5432:5432"
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: deapn
+      POSTGRES_PASSWORD: deapn_password
+      POSTGRES_DB: deapn_metrics
+    ports:
+      - "5433:5432"
