@@ -19,10 +19,8 @@ var upgrader = websocket.Upgrader{
 func main() {
 	log := logger.New("router")
 
-	// Initialize Ethereum Client for Staking Check
-	// Note: In production, these should come from config/env
 	rpcURL := "http://localhost:8545"
-	stakingAddr := "0x5FbDB2315678afecb367f032d93F642f64180aa3" // Local Foundry Default
+	stakingAddr := "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 	ethClient, err := eth.New(rpcURL, stakingAddr)
 	if err != nil {
 		log.Warn("Failed to initialize eth client, starting without on-chain verification", "error", err)
@@ -31,10 +29,8 @@ func main() {
 	reg := registry.New(log, ethClient)
 	handler := api.NewHandler(reg, log)
 
-	// Proxy API (OpenAI compatible)
 	http.HandleFunc("/v1/", handler.HandleProxy)
 
-	// Node Registration WebSocket
 	http.HandleFunc("/ws/register", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -56,6 +52,12 @@ func main() {
 			return
 		}
 
+		if msg.Type != protocol.MessageTypeRegister {
+			log.Error("Expected Register message", "type", msg.Type)
+			conn.Close()
+			return
+		}
+
 		var payload protocol.RegisterPayload
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			log.Error("Failed to unmarshal register payload", "error", err)
@@ -65,7 +67,6 @@ func main() {
 
 		if err := reg.Register(payload.NodeID, payload.WalletAddress, conn); err != nil {
 			log.Error("Registration rejected", "error", err)
-			// Send error response before closing if protocol supports it
 			conn.Close()
 			return
 		}
