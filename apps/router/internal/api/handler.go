@@ -15,7 +15,8 @@ import (
 type Handler struct {
 	reg     *registry.Registry
 	log     *slog.Logger
-	pending sync.Map
+	pending sync.Map 
+	nodeMap sync.Map 
 }
 
 func NewHandler(reg *registry.Registry, logger *slog.Logger) *Handler {
@@ -46,12 +47,15 @@ func (h *Handler) HandleProxy(w http.ResponseWriter, r *http.Request) {
 	msg := protocol.Message{
 		Type:    protocol.MessageTypeProxyReq,
 		ID:      reqID,
+		NodeID:  nodeID,
 		Payload: payload,
 	}
 
 	respChan := make(chan *protocol.ProxyResponsePayload, 100)
 	h.pending.Store(reqID, respChan)
+	h.nodeMap.Store(reqID, nodeID)
 	defer h.pending.Delete(reqID)
+	defer h.nodeMap.Delete(reqID)
 
 	if err := node.Conn.WriteJSON(msg); err != nil {
 		h.log.Error("Failed to send proxy request", "error", err)
@@ -71,7 +75,10 @@ func (h *Handler) HandleProxy(w http.ResponseWriter, r *http.Request) {
 			first = false
 		}
 
-		w.Write(resp.Body)
+		if len(resp.Body) > 0 {
+			w.Write(resp.Body)
+		}
+		
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
 		}
@@ -87,6 +94,22 @@ func (h *Handler) HandleResponse(msg protocol.Message) {
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		h.log.Error("Failed to unmarshal proxy response", "error", err)
 		return
+	}
+
+	if payload.SignedChunk != nil && len(payload.Body) > 0 {
+		nodeIDVal, ok := h.nodeMap.Load(msg.ID)
+		if !ok {
+			return
+		}
+		nodeID := nodeIDVal.(string)
+		node := h.reg.GetNode(nodeID)
+		if node != nil {
+			valid, err := protocol.VerifyChunk(node.WalletAddress, payload.SignedChunk, payload.Body)
+			if err != nil || !valid {
+				h.log.Error("CRITICAL: Stream chunk signature verification failed", "id", msg.ID, "node", nodeID)
+				return
+			}
+		}
 	}
 
 	if val, ok := h.pending.Load(msg.ID); ok {
