@@ -11,6 +11,9 @@ const (
 	MessageTypeProxyReq    MessageType = "ProxyRequest"
 	MessageTypeProxyRes    MessageType = "ProxyResponse"
 	MessageTypeSignedChunk MessageType = "SignedChunk"
+	
+	MessageTypeDisputeChallenge MessageType = "DisputeChallenge"
+	MessageTypeDisputeProof     MessageType = "DisputeProof"
 )
 
 type Message struct {
@@ -47,4 +50,13 @@ type SignedChunk struct {
 	DataHash  []byte `json:"data_hash"`
 	Timestamp int64  `json:"timestamp"`
 	Signature []byte `json:"signature"`
+}
+
+type DisputeChallengePayload struct {
+	RequestID string `json:"request_id"`
+}
+
+type DisputeProofPayload struct {
+	RequestID string `json:"request_id"`
+	Proof     []byte `json:"proof"`
 }

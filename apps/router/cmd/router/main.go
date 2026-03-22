@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/deapn/logger"
 	"github.com/deapn/protocol"
 	"github.com/deapn/router/internal/api"
+	"github.com/deapn/router/internal/dispute"
 	"github.com/deapn/router/internal/eth"
 	"github.com/deapn/router/internal/registry"
 	"github.com/gorilla/websocket"
@@ -20,7 +23,7 @@ func main() {
 	log := logger.New("router")
 
 	rpcURL := "http://localhost:8545"
-	stakingAddr := "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+	stakingAddr := "0x5FbDB2315678afecb367f032d93F642f64180aa3" 
 	ethClient, err := eth.New(rpcURL, stakingAddr)
 	if err != nil {
 		log.Warn("Failed to initialize eth client, starting without on-chain verification", "error", err)
@@ -28,8 +31,42 @@ func main() {
 
 	reg := registry.New(log, ethClient)
 	handler := api.NewHandler(reg, log)
+	
+	verifier := &protocol.StubTLSVerifier{}
+	arbiter := dispute.NewArbiter(reg, verifier, log)
 
 	http.HandleFunc("/v1/", handler.HandleProxy)
+
+	http.HandleFunc("/v1/report_fraud", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			NodeID       string `json:"node_id"`
+			RequestID    string `json:"request_id"`
+			ExpectedData []byte `json:"expected_data"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+		defer cancel()
+
+		valid, err := arbiter.Dispute(ctx, req.NodeID, req.RequestID, req.ExpectedData)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if valid {
+			w.Write([]byte(`{"status": "ok", "message": "Node proved innocent"}`))
+		} else {
+			w.Write([]byte(`{"status": "fraud", "message": "Node failed proof - SLASHING TRIGGERED"}`))
+		}
+	})
 
 	http.HandleFunc("/ws/register", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -48,12 +85,6 @@ func main() {
 		var msg protocol.Message
 		if err := json.Unmarshal(message, &msg); err != nil {
 			log.Error("Failed to unmarshal register message", "error", err)
-			conn.Close()
-			return
-		}
-
-		if msg.Type != protocol.MessageTypeRegister {
-			log.Error("Expected Register message", "type", msg.Type)
 			conn.Close()
 			return
 		}
@@ -80,8 +111,11 @@ func main() {
 			}
 			var nodeMsg protocol.Message
 			if err := json.Unmarshal(message, &nodeMsg); err == nil {
-				if nodeMsg.Type == protocol.MessageTypeProxyRes {
+				switch nodeMsg.Type {
+				case protocol.MessageTypeProxyRes:
 					handler.HandleResponse(nodeMsg)
+				case protocol.MessageTypeDisputeProof:
+					arbiter.HandleProof(nodeMsg)
 				}
 			}
 		}

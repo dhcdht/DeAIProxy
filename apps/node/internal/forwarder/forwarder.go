@@ -18,15 +18,17 @@ type Forwarder struct {
 	conn    *websocket.Conn
 	log     *slog.Logger
 	privKey *ecdsa.PrivateKey
+	prover  protocol.TLSProver
 	counter uint64
 }
 
-func New(conn *websocket.Conn, logger *slog.Logger, privKey *ecdsa.PrivateKey) *Forwarder {
+func New(conn *websocket.Conn, logger *slog.Logger, privKey *ecdsa.PrivateKey, prover protocol.TLSProver) *Forwarder {
 	return &Forwarder{
 		client:  &http.Client{},
 		conn:    conn,
 		log:     logger,
 		privKey: privKey,
+		prover:  prover,
 	}
 }
 
@@ -58,16 +60,24 @@ func (f *Forwarder) Forward(reqID string, payloadBytes []byte) {
 	}
 	defer resp.Body.Close()
 
+	var fullBody bytes.Buffer
+	multiWriter := io.MultiWriter(&fullBody)
+
 	buffer := make([]byte, 4096)
 	seqNum := atomic.AddUint64(&f.counter, 1)
 	
 	for {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
-			f.sendResponse(reqID, resp, buffer[:n], seqNum, false)
+			chunk := buffer[:n]
+			multiWriter.Write(chunk)
+			f.sendResponse(reqID, resp, chunk, seqNum, false)
 			seqNum++
 		}
 		if err == io.EOF {
+			if f.prover != nil {
+				f.prover.RecordSession(reqID, fullBody.Bytes())
+			}
 			f.sendResponse(reqID, resp, nil, seqNum, true)
 			break
 		}
