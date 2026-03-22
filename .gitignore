@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+vendor/
+bin/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Go
+go.sum
+go.work.sum
+
+# Solidity/Hardhat
+contracts/artifacts/
+contracts/cache/
+contracts/typechain/
+contracts/typechain-types/

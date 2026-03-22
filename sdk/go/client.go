@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"math/big"
 	"net/http"

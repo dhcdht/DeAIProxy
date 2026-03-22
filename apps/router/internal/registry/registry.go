@@ -11,25 +11,36 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type HealthMetrics struct {
+	TTFT        time.Duration
+	TPS         float64
+	DropRate    float64
+	SuccessRate float64
+	UpdatedAt   time.Time
+}
+
 type Node struct {
 	ID            string
 	WalletAddress string
 	Conn          *websocket.Conn
+	IsActive      bool
 	mu            sync.Mutex
 }
 
 type Registry struct {
-	nodes map[string]*Node
-	mu    sync.RWMutex
-	log   *slog.Logger
-	eth   *eth.Client
+	nodes   map[string]*Node
+	metrics map[string]HealthMetrics
+	mu      sync.RWMutex
+	log     *slog.Logger
+	eth     *eth.Client
 }
 
 func New(logger *slog.Logger, ethClient *eth.Client) *Registry {
 	return &Registry{
-		nodes: make(map[string]*Node),
-		log:   logger,
-		eth:   ethClient,
+		nodes:   make(map[string]*Node),
+		metrics: make(map[string]HealthMetrics),
+		log:     logger,
+		eth:     ethClient,
 	}
 }
 
@@ -60,6 +71,7 @@ func (r *Registry) Register(id string, wallet string, conn *websocket.Conn) erro
 		ID:            id,
 		WalletAddress: wallet,
 		Conn:          conn,
+		IsActive:      true,
 	}
 	r.log.Info("Node registered", "id", id, "wallet", wallet)
 	return nil
