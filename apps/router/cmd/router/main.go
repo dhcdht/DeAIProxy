@@ -12,6 +12,7 @@ import (
 	"github.com/deapn/router/internal/dispute"
 	"github.com/deapn/router/internal/eth"
 	"github.com/deapn/router/internal/registry"
+	"github.com/deapn/router/internal/settlement"
 	"github.com/gorilla/websocket"
 )
 
@@ -30,7 +31,8 @@ func main() {
 	}
 
 	reg := registry.New(log, ethClient)
-	handler := api.NewHandler(reg, log)
+	settler := settlement.NewSettler(ethClient, log)
+	handler := api.NewHandler(reg, settler, log)
 	
 	verifier := &protocol.StubTLSVerifier{}
 	arbiter := dispute.NewArbiter(reg, verifier, log)

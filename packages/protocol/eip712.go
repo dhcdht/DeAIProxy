@@ -11,11 +11,11 @@ import (
 )
 
 type Bill struct {
-	Buyer       common.Address \`json:"buyer"\`
-	Seller      common.Address \`json:"seller"\`
-	TotalAmount *big.Int       \`json:"totalAmount"\`
-	Nonce       uint64         \`json:"nonce"\`
-	ChainID     uint64         \`json:"chainId"\`
+	Buyer       common.Address `json:"buyer"`
+	Seller      common.Address `json:"seller"`
+	TotalAmount *big.Int       `json:"totalAmount"`
+	Nonce       uint64         `json:"nonce"`
+	ChainID     uint64         `json:"chainId"`
 }
 
 func HashBill(bill Bill) ([]byte, error) {

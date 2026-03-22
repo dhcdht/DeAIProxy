@@ -15,11 +15,8 @@ services:
     ports:
       - "5432:5432"
 
-  timescaledb:
-    image: timescale/timescaledb:latest-pg15
-    environment:
-      POSTGRES_USER: deapn
-      POSTGRES_PASSWORD: deapn_password
-      POSTGRES_DB: deapn_metrics
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
     ports:
-      - "5433:5432"
+      - "8545:8545"
+    command: ["anvil", "--host", "0.0.0.0"]

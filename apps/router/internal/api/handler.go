@@ -1,28 +1,35 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math/big"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/deapn/protocol"
 	"github.com/deapn/router/internal/registry"
+	"github.com/deapn/router/internal/settlement"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 )
 
 type Handler struct {
 	reg     *registry.Registry
 	log     *slog.Logger
+	settler *settlement.Settler
 	pending sync.Map 
 	nodeMap sync.Map 
 }
 
-func NewHandler(reg *registry.Registry, logger *slog.Logger) *Handler {
+func NewHandler(reg *registry.Registry, settler *settlement.Settler, logger *slog.Logger) *Handler {
 	return &Handler{
-		reg: reg,
-		log: logger,
+		reg:     reg,
+		settler: settler,
+		log:     logger,
 	}
 }
 
@@ -34,6 +41,26 @@ func (h *Handler) HandleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeID := nodes[0]
 	node := h.reg.GetNode(nodeID)
+
+	billAmountStr := r.Header.Get("X-DeAPN-Bill-Amount")
+	billNonceStr := r.Header.Get("X-DeAPN-Bill-Nonce")
+	billSigB64 := r.Header.Get("X-DeAPN-Bill-Sig")
+
+	if billAmountStr != "" && billSigB64 != "" {
+		amount, _ := new(big.Int).SetString(billAmountStr, 10)
+		nonce, _ := strconv.ParseUint(billNonceStr, 10, 64)
+		sig, _ := base64.StdEncoding.DecodeString(billSigB64)
+		
+		buyer := common.HexToAddress("0x0000000000000000000000000000000000000000") 
+		seller := common.HexToAddress(node.WalletAddress)
+
+		err := h.settler.ProcessBill(buyer, seller, amount, nonce, sig, 1337) 
+		if err != nil {
+			h.log.Error("Payment verification failed", "error", err)
+			http.Error(w, "Payment required or invalid", http.StatusPaymentRequired)
+			return
+		}
+	}
 
 	body, _ := io.ReadAll(r.Body)
 	reqID := uuid.New().String()
